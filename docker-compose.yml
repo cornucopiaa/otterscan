@@ -1,0 +1,68 @@
+services:
+  # Otterscan API - proxies requests to Erigon
+  otterscan-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      # IMPORTANT: Set this to your Erigon RPC endpoint
+      - ERIGON_URL=https://ethscan.org/erigon/
+      - PORT=3001
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Otterscan Frontend - SSR Node.js server
+  otterscan-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5173:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Point to the API's JSON-RPC proxy endpoint
+      - VITE_ERIGON_URL=/api/rpc
+      # Optional configurations
+      # - VITE_BEACON_API_URL=http://host.docker.internal:5052
+      # - VITE_ASSETS_URL_PREFIX=http://localhost:5175
+      # - VITE_OTS2=true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      otterscan-api:
+        condition: service_healthy
+
+  # Example: If you want to run Erigon in the same compose file
+  # erigon:
+  #   image: thorax/erigon:latest
+  #   ports:
+  #     - "8545:8545"
+  #     - "8546:8546"
+  #   volumes:
+  #     - erigon-data:/home/erigon/.local/share/erigon
+  #   command:
+  #     - --http
+  #     - --http.addr=0.0.0.0
+  #     - --http.port=8545
+  #     - --http.corsdomain=*
+  #     - --http.vhosts=*
+  #     - --http.api=eth,erigon,ots,web3,net,debug,trace
+  #   restart: unless-stopped
+
+# volumes:
+#   erigon-data:

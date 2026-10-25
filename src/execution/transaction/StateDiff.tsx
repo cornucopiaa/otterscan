@@ -69,9 +69,8 @@ const buildStateDiffTree = (
     if (isStateDiffGroup(group)) {
       result.push(
         <React.Fragment key={keyIndex++}>
-          {depth === 1 && getBranch()}
           <div className={depth > 0 ? "relative flex" : ""}>
-            {depth !== 1 && getBranch()}
+            {getBranch()}
             <div
               className={
                 depth === 0
@@ -87,6 +86,7 @@ const buildStateDiffTree = (
                     <TransactionAddress
                       address={getAddress(group.title)}
                       showCodeIndicator={true}
+                      miner={false}
                     />
                   </div>
                 </div>
@@ -103,7 +103,6 @@ const buildStateDiffTree = (
         </React.Fragment>,
       );
     } else {
-      result.push(getBranch(keyIndex++));
       let values: [string | null, string | null] = [group.from, group.to];
       let diffElement: null | React.ReactElement = null;
       let formatter: (value: string) => React.ReactNode | null = (
@@ -157,6 +156,7 @@ const buildStateDiffTree = (
           key={keyIndex++}
           className={`relative flex ${last ? "" : "border-l"}`}
         >
+          {getBranch()}
           <div
             className={`ml-5 py-1 ${showBorder ? "px-2 rounded border hover:border-gray-500" : ""} ${
               expanded ? "w-full" : ""
@@ -186,25 +186,119 @@ const StateDiff: React.FC<StateDiffProps> = ({ txData, txHash }) => {
   const { provider } = useContext(RuntimeContext);
   const traces = useStateDiffTrace(provider, txData.transactionHash);
 
-  usePageTitle(`Ethereum Transaction State Diff - ${txHash}`);
+  usePageTitle(`Ethereum Transaction State Diff ${txHash} | State Changes | Ethscan`, true);
 
-  const description = `State diff for Ethereum transaction ${txHash}, showing account balance and storage changes.`
-  const payloadSchemaWebPage = JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "WebPage",
-      "url": `https://ethscan.org/tx/${txHash}/statediff`,
-      "mainEntity": {
-        "@type": "BlockchainTransaction",
-        "transactionHash": `${txHash}`,
+  const title = `Ethereum Transaction State Diff ${txHash} | State Changes | Ethscan`;
+  const description = `View state changes caused by Ethereum transaction ${txHash}. Analyze balance updates, storage changes, and contract state differences on Ethscan.`;
+  const ogDescription = `Analyze state changes caused by Ethereum transaction ${txHash}. View balance updates, storage diffs, and contract state changes.`;
+  const twitterDescription = `Analyze state changes caused by Ethereum transaction ${txHash}. View storage and balance diffs on Ethscan.`;
+  const pageUrl = `https://ethscan.org/tx/${txHash}/statediff`;
+
+  const payloadSchemaGraph = JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "name": "Ethscan",
+        "url": "https://ethscan.org/",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://ethscan.org/search?q={query}",
+          "query-input": "required name=query"
+        }
+      },
+      {
+        "@type": "Organization",
+        "name": "Ethscan",
+        "url": "https://ethscan.org/"
+      },
+      {
+        "@type": "Dataset",
+        "name": `Ethereum Transaction State Diff for ${txHash}`,
+        "description": "A dataset describing Ethereum blockchain state changes caused by a single transaction, including balance updates, storage slot modifications, and contract state differences.",
+        "url": pageUrl,
+        "includedInDataCatalog": {
+          "@type": "DataCatalog",
+          "name": "Ethscan Ethereum Blockchain Data"
+        },
+        "variableMeasured": [
+          {
+            "@type": "PropertyValue",
+            "name": "Transaction Hash",
+            "value": txHash
+          },
+          {
+            "@type": "PropertyValue",
+            "name": "Account Balance Change"
+          },
+          {
+            "@type": "PropertyValue",
+            "name": "Storage Slot Change"
+          },
+          {
+            "@type": "PropertyValue",
+            "name": "Contract State Change"
+          },
+          {
+            "@type": "PropertyValue",
+            "name": "Nonce Change"
+          },
+          {
+            "@type": "PropertyValue",
+            "name": "Code Change"
+          }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://ethscan.org/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Transactions",
+            "item": "https://ethscan.org/tx/recent"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": `Transaction ${txHash}`,
+            "item": `https://ethscan.org/tx/${txHash}`
+          },
+          {
+            "@type": "ListItem",
+            "position": 4,
+            "name": "State Diff",
+            "item": pageUrl
+          }
+        ]
       }
-    }
-  )
+    ]
+  });
 
   return (
     <ContentFrame tabs>
       <Helmet>
-        <meta name="description" content={description}/>
-        <script type="application/ld+json">{payloadSchemaWebPage}</script>
+        <title>{title}</title>
+        <meta name="robots" content="noindex,follow" />
+        <meta name="description" content={description} />
+        <link rel="canonical" href={pageUrl} />
+
+        {/* OpenGraph */}
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={ogDescription} />
+        <meta property="og:url" content={pageUrl} />
+
+        {/* Twitter */}
+        <meta name="twitter:title" content={title} />
+        <meta name="twitter:description" content={twitterDescription} />
+
+        <script type="application/ld+json">{payloadSchemaGraph}</script>
       </Helmet>
       <div className="mb-5 mt-4 flex flex-col items-start space-y-3 overflow-x-auto text-sm">
         {traces ? (
@@ -219,6 +313,7 @@ const StateDiff: React.FC<StateDiffProps> = ({ txData, txHash }) => {
           </div>
         )}
       </div>
+
     </ContentFrame>
   );
 };

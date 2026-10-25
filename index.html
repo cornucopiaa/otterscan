@@ -1,23 +1,67 @@
 <!doctype html>
 <html lang="en" class="dark:bg-white dark-mode">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" href="/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="format-detection" content="telephone=no" />
-    <link rel="apple-touch-icon" href="/logo192.png" />
-    <!--
+
+<head>
+  <meta charset="utf-8" />
+
+  <!-- Google Tag Manager -->
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-KJWQJ7P');</script>
+  <!-- End Google Tag Manager -->
+  <link rel="icon" href="/favicon.ico" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="format-detection" content="telephone=no" />
+  <link rel="apple-touch-icon" href="/logo192.png" />
+  <!--
       manifest.json provides metadata used when your web app is installed on a
       user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
     -->
-    <link rel="manifest" href="/manifest.json" />
-    <title>Ethscan</title>
-  </head>
+  <link rel="manifest" href="/manifest.json" />
 
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-    <script type="module" src="/src/index.tsx"></script>
-  </body>
+  <!-- Resource hints for better performance -->
+  <link rel="preconnect" href="https://analytics.ahrefs.com" />
+  <link rel="dns-prefetch" href="https://analytics.ahrefs.com" />
+
+  <!-- Static Open Graph meta tags (page-specific og:title, og:description, og:url come from Helmet) -->
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="https://ethscan.org/ethscan-social-preview.jpeg" />
+  <meta property="og:image:width" content="1280" />
+  <meta property="og:image:height" content="640" />
+  <meta property="og:site_name" content="Ethscan" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Static Twitter Card meta tags (page-specific twitter:title, twitter:description come from Helmet) -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://ethscan.org/ethscan-social-preview.jpeg" />
+
+  <!-- Page-specific title, description, og:title, og:description, og:url, twitter:title, twitter:description are injected via Helmet SSR -->
+
+  <!-- Prevent layout shift by setting theme before render -->
+  <script>
+    if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  </script>
+
+  <!-- Ahrefs Analytics -->
+  <script src="https://analytics.ahrefs.com/analytics.js" data-key="B0ZOFbq2FNMwQGlOXLmKiA" async></script>
+  <!--app-head-->
+</head>
+
+<body>
+  <!-- Google Tag Manager (noscript) -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KJWQJ7P"
+  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <!-- End Google Tag Manager (noscript) -->
+
+  <div id="root"><!--app-html--></div>
+  <script type="module" src="/src/index.tsx"></script>
+</body>
+
 </html>

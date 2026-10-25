@@ -1,3 +1,13 @@
-# https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow:
+
+Allow: /
+Allow: /blocks/recent
+Allow: /tx/recent
+Allow: /block/
+Allow: /tx/
+Allow: /address/
+Allow: /broadcastTx
+
+Disallow: /api/
+
+Sitemap: https://ethscan.org/sitemap.xml

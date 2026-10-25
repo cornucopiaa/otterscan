@@ -1,0 +1,370 @@
+/**
+ * REST API client for Otterscan
+ * All blockchain data is fetched through REST API endpoints
+ */
+
+// Backend-resolved Transaction Action (mirrors api/lookups/resolveAction.js
+// output). Bigints cross the JSON boundary as decimal strings.
+export type TokenDescriptor = {
+  address: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+};
+
+export type ResolvedAction =
+  | { kind: "eip7702"; authorizations: Array<{
+        authority: string | null;
+        address: string;
+        chainId: number;
+        nonce: number;
+      }>; }
+  | { kind: "approve"; token: TokenDescriptor; spender: string; owner: string; value: string; }
+  | { kind: "swap"; protocol: "Uniswap V2" | "Uniswap V3";
+      pool: string; tokenIn: TokenDescriptor; tokenOut: TokenDescriptor;
+      amountIn: string; amountOut: string; }
+  | { kind: "swap-partial"; protocol: "Uniswap V2" | "Uniswap V3"; pool: string; }
+  | { kind: "weth-wrap" | "weth-unwrap"; weth: string; account: string; value: string; }
+  | { kind: "call"; method: string; selector: string; from: string; to: string; }
+  | { kind: "erc20-transfer"; token: TokenDescriptor; from: string; to: string; value: string; }
+  | { kind: "erc721-transfer"; token: string; from: string; to: string; tokenId: string; isMint: boolean; }
+  | { kind: "native-transfer"; from: string; to: string; value: string; };
+
+// For SSR, we need absolute URLs pointing to the API server directly.
+// On client, relative URLs work fine (proxied by Express).
+// Note: This function is called at module load time
+const isServer = typeof window === 'undefined';
+
+// Server-side: use SSR_API_URL env var (set at runtime), fallback to localhost for dev
+// Client-side: use relative URL (proxied by Express server)
+const SSR_API_URL = isServer
+  ? (process.env.SSR_API_URL || 'http://localhost:3001')
+  : '';
+
+const API_BASE = isServer
+  ? `${SSR_API_URL}/api`  // Direct API server URL for SSR (configurable)
+  : '/api';               // Relative URL for browser (proxied)
+
+if (isServer) {
+  console.log('[API Client] Running on server, API base:', API_BASE);
+}
+
+/**
+ * Generic fetch wrapper with error handling
+ */
+async function apiFetch<T>(endpoint: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${endpoint}`);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Block-related API calls
+ */
+export const blocksAPI = {
+  /**
+   * Get the latest block number
+   */
+  async getLatest(): Promise<{ blockNumber: number }> {
+    return apiFetch('/blocks/latest');
+  },
+
+  /**
+   * Get recent blocks with pagination (uses batch RPC request on server)
+   */
+  async getRecent(page: number = 1, limit: number = 30): Promise<{
+    total: number;
+    page: number;
+    limit: number;
+    blocks: Array<{
+      number: number;
+      hash: string;
+      timestamp: number;
+      miner: string;
+      transactionCount: number;
+      gasUsed: number;
+      gasLimit: number;
+      baseFeePerGas: number | null;
+      size: number;
+      parentHash: string;
+    }>;
+  }> {
+    return apiFetch(`/blocks/recent?page=${page}&limit=${limit}`);
+  },
+
+  /**
+   * Get block details by number or hash
+   */
+  async getBlock(numberOrHash: number | string): Promise<{
+    number: number;
+    hash: string;
+    timestamp: number;
+    miner: string;
+    transactionCount: number;
+    gasUsed: number;
+    gasLimit: number;
+    baseFeePerGas: number | null;
+    size: number;
+    parentHash: string;
+    // Additional fields for detailed block view
+    extraData: string;
+    difficulty: number;
+    totalDifficulty: string | null;
+    sha3Uncles: string;
+    stateRoot: string;
+    receiptsRoot: string;
+    nonce: string;
+    // Post-Cancun fields (may be null for older blocks)
+    blobGasUsed: number | null;
+    excessBlobGas: number | null;
+    parentBeaconBlockRoot: string | null;
+  }> {
+    return apiFetch(`/blocks/${numberOrHash}`);
+  },
+
+  /**
+   * Get transactions in a block with pagination
+   */
+  async getTransactions(
+    blockNumber: number,
+    page = 0,
+    limit = 25
+  ): Promise<{
+    total: number;
+    page: number;
+    limit: number;
+    transactions: Array<{
+      hash: string;
+      from: string;
+      to: string;
+      value: string;
+      type: number;
+      status: number;
+      gasUsed: number;
+      fee: string;
+      index: number;
+    }>;
+  }> {
+    return apiFetch(`/blocks/${blockNumber}/transactions?page=${page}&limit=${limit}`);
+  },
+};
+
+/**
+ * Transaction-related API calls
+ */
+export const transactionsAPI = {
+  /**
+   * Get recent transactions from multiple blocks (server-side combined)
+   */
+  async getRecent(page: number = 1, limit: number = 30): Promise<{
+    total: number;
+    page: number;
+    limit: number;
+    transactions: Array<{
+      hash: string;
+      from: string;
+      to: string;
+      value: string;
+      type: number;
+      status: number;
+      gasUsed: number;
+      fee: string;
+      index: number;
+      blockNumber: number;
+      timestamp: number;
+      data: string;
+    }>;
+  }> {
+    return apiFetch(`/transactions/recent?page=${page}&limit=${limit}`);
+  },
+
+  /**
+   * Get transaction details
+   */
+  async getTransaction(hash: string): Promise<{
+    hash: string;
+    from: string;
+    to: string;
+    value: string;
+    type: number;
+    gasLimit: string;
+    gasPrice: string;
+    nonce: number;
+    data: string;
+    blockNumber: number;
+    blockHash: string;
+    transactionIndex: number;
+    status: boolean | null;
+    gasUsed: string;
+    fee: string;
+    logs: Array<{
+      address: string;
+      topics: string[];
+      data: string;
+      logIndex: number;
+    }>;
+    contractAddress: string | null;
+    // EIP-1559 fields (type 2 transactions)
+    maxPriorityFeePerGas: string | null;
+    maxFeePerGas: string | null;
+    authorizationList: Array<{
+      chainId: number;
+      address: string;
+      nonce: number;
+      authority: string | null;
+    }> | null;
+    resolvedAction: ResolvedAction | null;
+    // EIP-4844 blob transaction fields (type 3)
+    maxFeePerBlobGas: string | null;
+    blobVersionedHashes: string[] | null;
+    // Block data
+    timestamp: number | null;
+    baseFeePerGas: number | null;
+    blockTransactionCount: number | null;
+    confirmations: number;
+  }> {
+    return apiFetch(`/transactions/${hash}`);
+  },
+
+  /**
+   * Get internal operations
+   */
+  async getInternal(hash: string): Promise<{
+    operations: Array<{
+      type: number;
+      from: string;
+      to: string;
+      value: string;
+    }>;
+  }> {
+    return apiFetch(`/transactions/${hash}/internal`);
+  },
+
+  /**
+   * Get execution trace
+   */
+  async getTrace(hash: string): Promise<{ trace: any }> {
+    return apiFetch(`/transactions/${hash}/trace`);
+  },
+
+  /**
+   * Get token transfers
+   */
+  async getTransfers(hash: string): Promise<{
+    transfers: Array<{
+      token: string;
+      from: string;
+      to: string;
+      value: string;
+    }>;
+  }> {
+    return apiFetch(`/transactions/${hash}/transfers`);
+  },
+};
+
+/**
+ * Address-related API calls
+ */
+export const addressesAPI = {
+  /**
+   * Get address information
+   */
+  async getAddress(address: string): Promise<{
+    address: string;
+    balance: string;
+    isContract: boolean;
+    transactionCount: number;
+  }> {
+    return apiFetch(`/addresses/${address}`);
+  },
+
+  /**
+   * Get contract bytecode
+   */
+  async getCode(address: string): Promise<{
+    address: string;
+    code: string;
+    isContract: boolean;
+  }> {
+    return apiFetch(`/addresses/${address}/code`);
+  },
+
+  /**
+   * Get contract creator
+   */
+  async getCreator(address: string): Promise<{
+    address: string;
+    creator: string;
+    transactionHash: string;
+  }> {
+    return apiFetch(`/addresses/${address}/creator`);
+  },
+
+  /**
+   * Get transactions for an address
+   */
+  async getTransactions(
+    address: string,
+    page = 1,
+    limit = 25
+  ): Promise<{
+    total: number;
+    page: number;
+    limit: number;
+    transactions: Array<{
+      hash: string;
+      from: string;
+      to: string;
+      value: string;
+      type: number;
+      status: number | null;
+      gasUsed: number;
+      fee: string;
+      blockNumber: number;
+      timestamp: number;
+      data: string;
+      index: number;
+    }>;
+    hasMore: boolean;
+  }> {
+    return apiFetch(`/addresses/${address}/transactions?page=${page}&limit=${limit}`);
+  },
+};
+
+/**
+ * Token-related API calls
+ */
+export const tokensAPI = {
+  /**
+   * Get ERC20 token metadata
+   */
+  async getToken(address: string): Promise<{
+    address: string;
+    name: string;
+    symbol: string;
+    decimals: number;
+  }> {
+    return apiFetch(`/tokens/${address}`);
+  },
+};
+
+/**
+ * Search API
+ */
+export const searchAPI = {
+  /**
+   * Universal search
+   */
+  async search(query: string): Promise<
+    | { type: 'transaction'; hash: string }
+    | { type: 'block'; number?: number; hash?: string }
+    | { type: 'address'; address: string; isContract: boolean }
+  > {
+    return apiFetch(`/search/${query}`);
+  },
+};

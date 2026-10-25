@@ -13,6 +13,7 @@ type LogsProps = {
 
 const Logs: FC<LogsProps> = ({ logs, txHash }) => {
   const location = useLocation();
+
   useEffect(() => {
     setTimeout(() => {
       if (location.hash) {
@@ -27,25 +28,119 @@ const Logs: FC<LogsProps> = ({ logs, txHash }) => {
     }, 200);
   }, [logs]);
 
-  usePageTitle(`Ethereum Transaction Logs - ${txHash}`);
+  usePageTitle(`Ethereum Transaction Logs ${txHash} | Smart Contract Events | Ethscan`, true);
 
-  const description = `View logs for Ethereum transaction ${txHash}, including emitted events and contract interactions.`
-  const payloadSchemaWebPage = JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "WebPage",
-      "url": `https://ethscan.org/tx/{${txHash}/logs`,
-      "mainEntity": {
-        "@type": "BlockchainTransaction",
-        "transactionHash": `${txHash}`,
+  const title = `Ethereum Transaction Logs ${txHash} | Smart Contract Events | Ethscan`;
+  const description = `View smart contract event logs for Ethereum transaction ${txHash}. Explore emitted events, topics, and decoded log data on Ethscan.`;
+  const ogDescription = `Explore smart contract event logs emitted by Ethereum transaction ${txHash}. View topics, events, and decoded log data on Ethscan.`;
+  const twitterDescription = `Explore smart contract event logs emitted by Ethereum transaction ${txHash}. View topics and decoded event data.`;
+  const pageUrl = `https://ethscan.org/tx/${txHash}/logs`;
+
+  const payloadSchemaGraph = JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "name": "Ethscan",
+        "url": "https://ethscan.org/",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://ethscan.org/search?q={query}",
+          "query-input": "required name=query"
+        }
+      },
+      {
+        "@type": "Organization",
+        "name": "Ethscan",
+        "url": "https://ethscan.org/"
+      },
+      {
+        "@type": "Dataset",
+        "name": `Ethereum Transaction Logs for ${txHash}`,
+        "description": "A dataset of smart contract event logs emitted during execution of a specific Ethereum transaction, including event topics, contract addresses, and decoded log data.",
+        "url": pageUrl,
+        "includedInDataCatalog": {
+          "@type": "DataCatalog",
+          "name": "Ethscan Ethereum Blockchain Data"
+        },
+        "variableMeasured": [
+          {
+            "@type": "PropertyValue",
+            "name": "Transaction Hash",
+            "value": txHash
+          },
+          {
+            "@type": "PropertyValue",
+            "name": "Contract Address"
+          },
+          {
+            "@type": "PropertyValue",
+            "name": "Event Name"
+          },
+          {
+            "@type": "PropertyValue",
+            "name": "Event Topics"
+          },
+          {
+            "@type": "PropertyValue",
+            "name": "Decoded Event Parameters"
+          },
+          {
+            "@type": "PropertyValue",
+            "name": "Log Index"
+          }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://ethscan.org/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Transactions",
+            "item": "https://ethscan.org/tx/recent"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": `Transaction ${txHash}`,
+            "item": `https://ethscan.org/tx/${txHash}`
+          },
+          {
+            "@type": "ListItem",
+            "position": 4,
+            "name": "Logs",
+            "item": pageUrl
+          }
+        ]
       }
-    }
-  )
+    ]
+  });
 
   return (
     <ContentFrame tabs>
       <Helmet>
-        <meta name="description" content={description}/>
-        <script type="application/ld+json">{payloadSchemaWebPage}</script>
+        <title>{title}</title>
+        <meta name="robots" content="noindex,follow" />
+        <meta name="description" content={description} />
+        <link rel="canonical" href={pageUrl} />
+
+        {/* OpenGraph */}
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={ogDescription} />
+        <meta property="og:url" content={pageUrl} />
+
+        {/* Twitter */}
+        <meta name="twitter:title" content={title} />
+        <meta name="twitter:description" content={twitterDescription} />
+
+        <script type="application/ld+json">{payloadSchemaGraph}</script>
       </Helmet>
       {logs && (
         <>
@@ -60,6 +155,7 @@ const Logs: FC<LogsProps> = ({ logs, txHash }) => {
           )}
         </>
       )}
+
     </ContentFrame>
   );
 };

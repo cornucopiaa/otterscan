@@ -1,0 +1,183 @@
+import React from 'react';
+import { renderToString } from 'react-dom/server';
+import { StaticRouter } from 'react-router';
+import { HelmetProvider, HelmetServerState } from 'react-helmet-async';
+import { QueryClient, QueryClientProvider, dehydrate } from '@tanstack/react-query';
+import AppSSR from './AppSSR';
+import { recentBlocksQueryOptions, paginatedBlocksQueryOptions, singleBlockQueryOptions } from './api/useRestBlocks';
+import { recentTransactionsQueryOptions, paginatedTransactionsQueryOptions, singleTransactionQueryOptions, blockTransactionsQueryOptions } from './api/useRestTransactions';
+import { singleAddressQueryOptions, addressTransactionsQueryOptions } from './api/useRestAddresses';
+import { PAGE_SIZE } from './params';
+import { TimezoneProvider } from './useTimezone';
+import { resolveTimeZone } from './utils/timestamp';
+
+interface RenderResult {
+  html: string;
+  head: string;
+}
+
+// Parse page number from URL query string
+function getPageFromUrl(url: string): number {
+  try {
+    const urlObj = new URL(url, 'http://localhost');
+    const p = urlObj.searchParams.get('p');
+    return p ? parseInt(p, 10) || 1 : 1;
+  } catch {
+    return 1;
+  }
+}
+
+// Get URL path without query string
+function getUrlPath(url: string): string {
+  try {
+    const urlObj = new URL(url, 'http://localhost');
+    return urlObj.pathname;
+  } catch {
+    return url.split('?')[0] || url;
+  }
+}
+
+// Extract block number or hash from block page URL
+function getBlockNumberOrHash(urlPath: string): string | null {
+  const match = urlPath.match(/^\/block\/([^/]+)$/);
+  return match ? match[1] : null;
+}
+
+// Extract block number from block transactions page URL
+function getBlockNumberFromTxsUrl(urlPath: string): number | null {
+  const match = urlPath.match(/^\/block\/(\d+)\/txs/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+// Extract transaction hash from transaction page URL
+function getTxHash(urlPath: string): string | null {
+  const match = urlPath.match(/^\/tx\/([^/]+)/);
+  return match ? match[1] : null;
+}
+
+// Extract address from address page URL
+function getAddress(urlPath: string): string | null {
+  const match = urlPath.match(/^\/address\/([^/]+)/);
+  return match ? match[1] : null;
+}
+
+export async function render(
+  url: string,
+  _ssrManifest?: string,
+  timeZone?: string,
+): Promise<RenderResult> {
+  // The `tz` cookie is untrusted input; fall back to UTC if it is missing or
+  // not a valid IANA timezone (an invalid one makes toLocaleString throw).
+  const resolvedTimeZone = resolveTimeZone(timeZone);
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 15000,
+        retry: false,
+      },
+    },
+  });
+
+  const helmetContext: { helmet?: HelmetServerState } = {};
+  const urlPath = getUrlPath(url);
+  const pageNumber = getPageFromUrl(url);
+
+  // Prefetch data based on route
+  try {
+    console.log(`[SSR] Prefetching data for URL: ${url}, path: ${urlPath}`);
+
+    if (url === '/' || url === '' || urlPath === '/') {
+      // Homepage - prefetch recent blocks and transactions (5 items each)
+      console.log('[SSR] Prefetching homepage data...');
+      const results = await Promise.allSettled([
+        queryClient.prefetchQuery(recentBlocksQueryOptions(5)),
+        queryClient.prefetchQuery(recentTransactionsQueryOptions(5)),
+      ]);
+      console.log('[SSR] Prefetch results:', results.map(r => r.status));
+    } else if (urlPath === '/blocks/recent' || url.startsWith('/blocks/recent')) {
+      // Recent blocks page - prefetch paginated blocks (30 items)
+      console.log('[SSR] Prefetching blocks page data...');
+      await queryClient.prefetchQuery(paginatedBlocksQueryOptions(pageNumber, 30));
+    } else if (urlPath === '/tx/recent' || url.startsWith('/tx/recent')) {
+      // Recent transactions page - prefetch paginated transactions (30 items)
+      console.log('[SSR] Prefetching transactions page data...');
+      await queryClient.prefetchQuery(paginatedTransactionsQueryOptions(pageNumber, 30));
+    } else if (urlPath.match(/^\/block\/\d+\/txs/)) {
+      // Block transactions page - prefetch block transactions
+      const blockNumber = getBlockNumberFromTxsUrl(urlPath);
+      if (blockNumber !== null) {
+        console.log('[SSR] Prefetching block transactions for block:', blockNumber);
+        await queryClient.prefetchQuery(blockTransactionsQueryOptions(blockNumber, pageNumber, PAGE_SIZE));
+      }
+    } else if (urlPath.startsWith('/block/')) {
+      // Block detail page - prefetch single block data
+      const blockNumberOrHash = getBlockNumberOrHash(urlPath);
+      if (blockNumberOrHash) {
+        console.log('[SSR] Prefetching block data for:', blockNumberOrHash);
+        await queryClient.prefetchQuery(singleBlockQueryOptions(blockNumberOrHash));
+      }
+    } else if (urlPath.startsWith('/tx/')) {
+      // Transaction detail page - prefetch single transaction data
+      const txHash = getTxHash(urlPath);
+      if (txHash) {
+        console.log('[SSR] Prefetching transaction data for:', txHash);
+        await queryClient.prefetchQuery(singleTransactionQueryOptions(txHash));
+      }
+    } else if (urlPath.startsWith('/address/')) {
+      // Address page - prefetch address data and transactions
+      const address = getAddress(urlPath);
+      if (address) {
+        console.log('[SSR] Prefetching address data and transactions for:', address);
+        await Promise.allSettled([
+          queryClient.prefetchQuery(singleAddressQueryOptions(address)),
+          queryClient.prefetchQuery(addressTransactionsQueryOptions(address, 1, 25)),
+        ]);
+      }
+    }
+  } catch (error) {
+    // Log but don't fail SSR if prefetch fails - client can refetch
+    console.error('[SSR] Prefetch error:', error);
+  }
+
+  // Debug: Log cache state before rendering
+  const cacheData = queryClient.getQueryData(['paginatedBlocks', pageNumber, 30]);
+  console.log('[SSR] Cache state before render:', {
+    url,
+    urlPath,
+    pageNumber,
+    hasData: !!cacheData,
+    dataLength: cacheData ? (cacheData as any).blocks?.length : 0,
+  });
+
+  const html = renderToString(
+    <React.StrictMode>
+      <HelmetProvider context={helmetContext}>
+        <QueryClientProvider client={queryClient}>
+          <TimezoneProvider initialTimeZone={resolvedTimeZone}>
+            <StaticRouter location={url}>
+              <AppSSR />
+            </StaticRouter>
+          </TimezoneProvider>
+        </QueryClientProvider>
+      </HelmetProvider>
+    </React.StrictMode>
+  );
+
+  console.log('[SSR] Rendered HTML length:', html.length);
+
+  const { helmet } = helmetContext;
+  const dehydratedState = dehydrate(queryClient);
+
+  const head = `
+    ${helmet?.title?.toString() ?? ''}
+    ${helmet?.meta?.toString() ?? ''}
+    ${helmet?.link?.toString() ?? ''}
+    ${helmet?.script?.toString() ?? ''}
+    <script>
+      window.__REACT_QUERY_STATE__ = ${JSON.stringify(dehydratedState)};
+      window.__TZ__ = ${JSON.stringify(resolvedTimeZone)};
+    </script>
+  `;
+
+  return { html, head };
+}
